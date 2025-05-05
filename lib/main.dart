@@ -45,11 +45,13 @@ class ShoppingListPage extends StatefulWidget {
 class _ShoppingListPageState extends State<ShoppingListPage> {
   final Map<String, List<ShoppingItem>> categoryMap = {};
 
+  // Getter methods to organize the data
   List<ShoppingItem> get allItems =>
       categoryMap.entries
           .where((e) => e.key != 'Completed')
           .expand((e) => e.value)
           .toList();
+
   List<ShoppingItem> get todayItems =>
       allItems
           .where(
@@ -60,6 +62,7 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                 !i.isCompleted,
           )
           .toList();
+
   List<ShoppingItem> get scheduledItems =>
       allItems
           .where(
@@ -70,12 +73,15 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                     isSameDate(i.scheduledDate!, DateTime.now())),
           )
           .toList();
+
   List<ShoppingItem> get completedItems => categoryMap['Completed'] ?? [];
 
+  // Helper function to compare dates
   bool isSameDate(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
+  // Function to add a new category
   void _addCategory() {
     showDialog(
       context: context,
@@ -110,6 +116,51 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
     );
   }
 
+  // Function to update the category name
+  void _updateCategory(String oldCategoryName) {
+    final controller = TextEditingController(text: oldCategoryName);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Update Category'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(labelText: 'Category Name'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                if (controller.text.isNotEmpty) {
+                  setState(() {
+                    // Remove the old category and add the updated category
+                    List<ShoppingItem> items = categoryMap[oldCategoryName]!;
+                    categoryMap.remove(oldCategoryName);
+                    categoryMap[controller.text] = items;
+                  });
+                  Navigator.pop(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Category name cannot be empty"),
+                    ),
+                  );
+                }
+              },
+              child: const Text('Update'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Function to open a page displaying the items of a category
   Future<void> _openInfoPage(String title, List<ShoppingItem> items) async {
     await Navigator.push(
       context,
@@ -160,6 +211,7 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
     setState(() {});
   }
 
+  // Function to go to the category page
   Future<void> _goToCategoryPage(String category) async {
     final updated = await Navigator.push<List<ShoppingItem>>(
       context,
@@ -242,38 +294,19 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                   final items = categoryMap[category]!;
                   return ListTile(
                     title: Text(category),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children:
-                          items.map((item) {
-                            final showDate = item.scheduledDate != null;
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 2),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(item.name),
-                                  if (showDate)
-                                    Text(
-                                      DateFormat(
-                                        'yyyy-MM-dd',
-                                      ).format(item.scheduledDate!),
-                                      style: const TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text('${items.length}'),
+                        SizedBox(width: 10),
+
                         IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
+                          icon: const Icon(Icons.edit),
+                          onPressed: () => _updateCategory(category),
+                        ),
+                        SizedBox(width: 10),
+                        IconButton(
+                          icon: const Icon(Icons.delete),
                           onPressed:
                               () =>
                                   setState(() => categoryMap.remove(category)),
@@ -418,7 +451,6 @@ class _CategoryPageState extends State<CategoryPage> {
       context: context,
       builder: (context) {
         final controller = TextEditingController();
-        bool isToday = false;
         bool isScheduled = false;
         DateTime? selectedDate;
 
@@ -432,12 +464,6 @@ class _CategoryPageState extends State<CategoryPage> {
                   TextField(
                     controller: controller,
                     decoration: const InputDecoration(labelText: 'Item Name'),
-                  ),
-                  CheckboxListTile(
-                    title: const Text('Today'),
-                    value: isToday,
-                    onChanged:
-                        (v) => setStateDialog(() => isToday = v ?? false),
                   ),
                   CheckboxListTile(
                     title: const Text('Scheduled'),
@@ -456,12 +482,6 @@ class _CategoryPageState extends State<CategoryPage> {
                         );
                         if (d != null) {
                           setStateDialog(() => selectedDate = d);
-                          // if scheduled date is today, mark isToday
-                          if (d.year == DateTime.now().year &&
-                              d.month == DateTime.now().month &&
-                              d.day == DateTime.now().day) {
-                            isToday = true;
-                          }
                         }
                       },
                       child: Text(
@@ -479,20 +499,150 @@ class _CategoryPageState extends State<CategoryPage> {
                 ),
                 TextButton(
                   onPressed: () {
-                    final newItem = ShoppingItem(
-                      name: controller.text,
-                      isToday: isToday,
-                      isScheduled: isScheduled,
-                      scheduledDate: selectedDate,
-                    );
-                    setState(() => items.add(newItem));
-                    Navigator.pop(context, items);
+                    if (controller.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Item name cannot be empty"),
+                        ),
+                      );
+                    } else if (isScheduled && selectedDate != null) {
+                      final newItem = ShoppingItem(
+                        name: controller.text,
+                        isScheduled: isScheduled,
+                        scheduledDate: selectedDate,
+                      );
+                      setState(() => items.add(newItem));
+                      Navigator.pop(context, items);
+                    } else {
+                      // If scheduled is selected but no date is picked, show a warning
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Please select a scheduled date"),
+                        ),
+                      );
+                    }
                   },
                   child: const Text('Add'),
                 ),
               ],
             );
           },
+        );
+      },
+    );
+  }
+
+  void _updateItem(int index) {
+    final controller = TextEditingController(text: items[index].name);
+    bool isScheduled = items[index].isScheduled;
+    DateTime? selectedDate = items[index].scheduledDate;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Update Item'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(labelText: 'Item Name'),
+                  ),
+                  CheckboxListTile(
+                    title: const Text('Scheduled'),
+                    value: isScheduled,
+                    onChanged:
+                        (v) => setStateDialog(() => isScheduled = v ?? false),
+                  ),
+                  if (isScheduled)
+                    TextButton(
+                      onPressed: () async {
+                        final d = await showDatePicker(
+                          context: context,
+                          initialDate: selectedDate ?? DateTime.now(),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2100),
+                        );
+                        if (d != null) {
+                          setStateDialog(() => selectedDate = d);
+                        }
+                      },
+                      child: Text(
+                        selectedDate == null
+                            ? 'Pick Date'
+                            : selectedDate!.toLocal().toString().split(' ')[0],
+                      ),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    if (controller.text.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Item name cannot be empty"),
+                        ),
+                      );
+                    } else if (isScheduled && selectedDate != null) {
+                      setState(() {
+                        items[index] = ShoppingItem(
+                          name: controller.text,
+                          isScheduled: isScheduled,
+                          scheduledDate: selectedDate,
+                        );
+                      });
+                      Navigator.pop(context);
+                    } else {
+                      // If scheduled is selected but no date is picked, show a warning
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Please select a scheduled date"),
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Update'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _deleteItem(int index) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete Item'),
+          content: Text(
+            'Are you sure you want to delete "${items[index].name}"?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  items.removeAt(index);
+                });
+                Navigator.pop(context);
+              },
+              child: const Text('Delete'),
+            ),
+          ],
         );
       },
     );
@@ -506,10 +656,38 @@ class _CategoryPageState extends State<CategoryPage> {
         itemCount: items.length,
         itemBuilder: (context, i) {
           final item = items[i];
-          return CheckboxListTile(
+          return ListTile(
             title: Text(item.name),
-            value: item.isCompleted,
-            onChanged: (v) => setState(() => item.isCompleted = v ?? false),
+            subtitle:
+                item.scheduledDate != null
+                    ? Text(
+                      item.scheduledDate!.toLocal().toString().split(' ')[0],
+                    )
+                    : null,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  onPressed: () => _updateItem(i),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete),
+                  onPressed: () => _deleteItem(i),
+                ),
+                Checkbox(
+                  value: item.isCompleted,
+                  onChanged: (bool? value) {
+                    setState(() {
+                      item.isCompleted = value ?? false;
+                    });
+                  },
+                ),
+              ],
+            ),
+            onTap: () {
+              // You can add additional functionality here if needed.
+            },
           );
         },
       ),
